@@ -2,10 +2,27 @@
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type GameMode = 'passthrough' | 'walls';
+export type BoostType = 'speed' | 'points';
 
 export interface Position {
   x: number;
   y: number;
+}
+
+export interface Boost {
+  position: Position;
+  type: BoostType;
+  duration: number; // in game ticks
+}
+
+export interface Penalty {
+  position: Position;
+  points: number; // negative points
+}
+
+export interface ActiveBoost {
+  type: BoostType;
+  remaining: number; // ticks remaining
 }
 
 export interface GameState {
@@ -16,6 +33,9 @@ export interface GameState {
   gameOver: boolean;
   mode: GameMode;
   gridSize: { width: number; height: number };
+  boosts: Boost[];
+  penalties: Penalty[];
+  activeBoosts: ActiveBoost[];
 }
 
 export const GRID_SIZE = { width: 25, height: 25 };
@@ -33,6 +53,9 @@ export const createInitialState = (mode: GameMode = 'walls'): GameState => ({
   gameOver: false,
   mode,
   gridSize: GRID_SIZE,
+  boosts: [],
+  penalties: [],
+  activeBoosts: [],
 });
 
 export const generateFood = (snake: Position[], gridSize: { width: number; height: number }): Position => {
@@ -45,6 +68,44 @@ export const generateFood = (snake: Position[], gridSize: { width: number; heigh
   } while (snake.some(segment => segment.x === food.x && segment.y === food.y));
   
   return food;
+};
+
+const isPositionOccupied = (pos: Position, snake: Position[], food: Position, boosts: Boost[], penalties: Penalty[]): boolean => {
+  return (
+    snake.some(s => s.x === pos.x && s.y === pos.y) ||
+    (food.x === pos.x && food.y === pos.y) ||
+    boosts.some(b => b.position.x === pos.x && b.position.y === pos.y) ||
+    penalties.some(p => p.position.x === pos.x && p.position.y === pos.y)
+  );
+};
+
+export const generateBoost = (snake: Position[], food: Position, gridSize: { width: number; height: number }, existingBoosts: Boost[], penalties: Penalty[]): Boost => {
+  let position: Position;
+  do {
+    position = {
+      x: Math.floor(Math.random() * gridSize.width),
+      y: Math.floor(Math.random() * gridSize.height),
+    };
+  } while (isPositionOccupied(position, snake, food, existingBoosts, penalties));
+  
+  const type: BoostType = Math.random() < 0.5 ? 'speed' : 'points';
+  const duration = 50; // 50 game ticks
+  
+  return { position, type, duration };
+};
+
+export const generatePenalty = (snake: Position[], food: Position, gridSize: { width: number; height: number }, boosts: Boost[], existingPenalties: Penalty[]): Penalty => {
+  let position: Position;
+  do {
+    position = {
+      x: Math.floor(Math.random() * gridSize.width),
+      y: Math.floor(Math.random() * gridSize.height),
+    };
+  } while (isPositionOccupied(position, snake, food, boosts, existingPenalties));
+  
+  const points = -20; // lose 20 points
+  
+  return { position, points };
 };
 
 export const getNextHeadPosition = (head: Position, direction: Direction): Position => {
@@ -119,13 +180,48 @@ export const updateGameState = (state: GameState, newDirection?: Direction): Gam
   const newSnake = [nextHead, ...state.snake];
   let newFood = state.food;
   let newScore = state.score;
+  let newBoosts = [...state.boosts];
+  let newPenalties = [...state.penalties];
+  let newActiveBoosts = state.activeBoosts.map(boost => ({
+    ...boost,
+    remaining: boost.remaining - 1
+  })).filter(boost => boost.remaining > 0);
+  
+  // Apply points multiplier if active
+  const pointsMultiplier = newActiveBoosts.some(b => b.type === 'points') ? 2 : 1;
   
   // Check if food is eaten
   if (nextHead.x === state.food.x && nextHead.y === state.food.y) {
-    newScore += 10;
+    newScore += 10 * pointsMultiplier;
     newFood = generateFood(newSnake, state.gridSize);
   } else {
     newSnake.pop();
+  }
+  
+  // Check if boost is collected
+  const collectedBoostIndex = newBoosts.findIndex(b => b.position.x === nextHead.x && b.position.y === nextHead.y);
+  if (collectedBoostIndex !== -1) {
+    const collectedBoost = newBoosts[collectedBoostIndex];
+    newActiveBoosts.push({ type: collectedBoost.type, remaining: collectedBoost.duration });
+    newBoosts.splice(collectedBoostIndex, 1);
+  }
+  
+  // Check if penalty is hit
+  const hitPenaltyIndex = newPenalties.findIndex(p => p.position.x === nextHead.x && p.position.y === nextHead.y);
+  if (hitPenaltyIndex !== -1) {
+    const hitPenalty = newPenalties[hitPenaltyIndex];
+    newScore = Math.max(0, newScore + hitPenalty.points);
+    newPenalties.splice(hitPenaltyIndex, 1);
+  }
+  
+  // Randomly spawn boosts (5% chance)
+  if (Math.random() < 0.05 && newBoosts.length < 2) {
+    newBoosts.push(generateBoost(newSnake, newFood, state.gridSize, newBoosts, newPenalties));
+  }
+  
+  // Randomly spawn penalties (3% chance)
+  if (Math.random() < 0.03 && newPenalties.length < 2) {
+    newPenalties.push(generatePenalty(newSnake, newFood, state.gridSize, newBoosts, newPenalties));
   }
   
   return {
@@ -134,6 +230,9 @@ export const updateGameState = (state: GameState, newDirection?: Direction): Gam
     direction,
     food: newFood,
     score: newScore,
+    boosts: newBoosts,
+    penalties: newPenalties,
+    activeBoosts: newActiveBoosts,
   };
 };
 

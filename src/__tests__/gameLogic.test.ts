@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   createInitialState,
   generateFood,
+  generateBoost,
+  generatePenalty,
   getNextHeadPosition,
   wrapPosition,
   isCollisionWithSelf,
@@ -253,6 +255,105 @@ describe('gameLogic', () => {
       
       // Should not go down into its own body
       expect(direction).not.toBe('down');
+    });
+  });
+
+  describe('Boosts and Penalties', () => {
+    it('should generate boost at unoccupied position', () => {
+      const snake: Position[] = [{ x: 12, y: 12 }];
+      const food: Position = { x: 10, y: 10 };
+      const boost = generateBoost(snake, food, GRID_SIZE, [], []);
+      
+      expect(boost.position.x).toBeGreaterThanOrEqual(0);
+      expect(boost.position.x).toBeLessThan(GRID_SIZE.width);
+      expect(boost.position.y).toBeGreaterThanOrEqual(0);
+      expect(boost.position.y).toBeLessThan(GRID_SIZE.height);
+      expect(boost.type).toMatch(/^(speed|points)$/);
+      expect(boost.duration).toBeGreaterThan(0);
+    });
+
+    it('should generate penalty at unoccupied position', () => {
+      const snake: Position[] = [{ x: 12, y: 12 }];
+      const food: Position = { x: 10, y: 10 };
+      const penalty = generatePenalty(snake, food, GRID_SIZE, [], []);
+      
+      expect(penalty.position.x).toBeGreaterThanOrEqual(0);
+      expect(penalty.position.x).toBeLessThan(GRID_SIZE.width);
+      expect(penalty.position.y).toBeGreaterThanOrEqual(0);
+      expect(penalty.position.y).toBeLessThan(GRID_SIZE.height);
+      expect(penalty.points).toBeLessThan(0);
+    });
+
+    it('should apply points multiplier when points boost is active', () => {
+      const state = createInitialState('walls');
+      const stateWithBoost = {
+        ...state,
+        activeBoosts: [{ type: 'points' as const, remaining: 10 }],
+        food: { x: 13, y: 12 },
+      };
+      
+      const newState = updateGameState(stateWithBoost, 'right');
+      expect(newState.score).toBe(20); // 10 * 2
+    });
+
+    it('should collect boost when snake head hits it', () => {
+      const state = createInitialState('walls');
+      const stateWithBoost = {
+        ...state,
+        boosts: [{ position: { x: 13, y: 12 }, type: 'speed' as const, duration: 50 }],
+      };
+      
+      const newState = updateGameState(stateWithBoost, 'right');
+      expect(newState.boosts.length).toBe(0);
+      expect(newState.activeBoosts.length).toBe(1);
+      expect(newState.activeBoosts[0].type).toBe('speed');
+    });
+
+    it('should lose points when hitting penalty', () => {
+      const state = createInitialState('walls');
+      const stateWithPenalty = {
+        ...state,
+        score: 50,
+        penalties: [{ position: { x: 13, y: 12 }, points: -20 }],
+      };
+      
+      const newState = updateGameState(stateWithPenalty, 'right');
+      expect(newState.score).toBe(30);
+      expect(newState.penalties.length).toBe(0);
+    });
+
+    it('should not allow score to go below 0', () => {
+      const state = createInitialState('walls');
+      const stateWithPenalty = {
+        ...state,
+        score: 10,
+        penalties: [{ position: { x: 13, y: 12 }, points: -20 }],
+      };
+      
+      const newState = updateGameState(stateWithPenalty, 'right');
+      expect(newState.score).toBe(0);
+    });
+
+    it('should decrease active boost duration each tick', () => {
+      const state = createInitialState('walls');
+      const stateWithBoost = {
+        ...state,
+        activeBoosts: [{ type: 'speed' as const, remaining: 5 }],
+      };
+      
+      const newState = updateGameState(stateWithBoost, 'right');
+      expect(newState.activeBoosts[0].remaining).toBe(4);
+    });
+
+    it('should remove expired boosts', () => {
+      const state = createInitialState('walls');
+      const stateWithBoost = {
+        ...state,
+        activeBoosts: [{ type: 'speed' as const, remaining: 1 }],
+      };
+      
+      const newState = updateGameState(stateWithBoost, 'right');
+      expect(newState.activeBoosts.length).toBe(0);
     });
   });
 });
