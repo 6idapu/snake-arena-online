@@ -124,6 +124,40 @@ export const SpectatorView = () => {
       CELL_SIZE - 4
     );
 
+    // Draw boosts
+    state.boosts.forEach(boost => {
+      ctx.shadowBlur = 15;
+      if (boost.type === 'speed') {
+        ctx.shadowColor = 'hsl(45, 100%, 50%)';
+        ctx.fillStyle = 'hsl(45, 100%, 50%)';
+      } else {
+        ctx.shadowColor = 'hsl(280, 100%, 50%)';
+        ctx.fillStyle = 'hsl(280, 100%, 50%)';
+      }
+      ctx.beginPath();
+      ctx.arc(
+        boost.position.x * CELL_SIZE + CELL_SIZE / 2,
+        boost.position.y * CELL_SIZE + CELL_SIZE / 2,
+        CELL_SIZE / 3,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    });
+
+    // Draw penalties
+    state.penalties.forEach(penalty => {
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = 'hsl(0, 100%, 50%)';
+      ctx.fillStyle = 'hsl(0, 100%, 50%)';
+      ctx.fillRect(
+        penalty.position.x * CELL_SIZE + 2,
+        penalty.position.y * CELL_SIZE + 2,
+        CELL_SIZE - 4,
+        CELL_SIZE - 4
+      );
+    });
+
     // Draw snake
     state.snake.forEach((segment, index) => {
       const alpha = 1 - (index / state.snake.length) * 0.5;

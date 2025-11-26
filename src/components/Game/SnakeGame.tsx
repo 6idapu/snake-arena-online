@@ -3,7 +3,7 @@ import { GameState, Direction, GameMode, createInitialState, updateGameState } f
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Pause, RotateCcw } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, TrendingUp, Skull } from 'lucide-react';
 
 interface SnakeGameProps {
   mode: GameMode;
@@ -12,7 +12,8 @@ interface SnakeGameProps {
 }
 
 const CELL_SIZE = 20;
-const GAME_SPEED = 150;
+const BASE_GAME_SPEED = 150;
+const SPEED_BOOST_MULTIPLIER = 0.5;
 
 export const SnakeGame = ({ mode, onScoreChange, onGameOver }: SnakeGameProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -58,6 +59,40 @@ export const SnakeGame = ({ mode, onScoreChange, onGameOver }: SnakeGameProps) =
       CELL_SIZE - 4,
       CELL_SIZE - 4
     );
+
+    // Draw boosts
+    state.boosts.forEach(boost => {
+      ctx.shadowBlur = 20;
+      if (boost.type === 'speed') {
+        ctx.shadowColor = 'hsl(45, 100%, 50%)';
+        ctx.fillStyle = 'hsl(45, 100%, 50%)';
+      } else {
+        ctx.shadowColor = 'hsl(280, 100%, 50%)';
+        ctx.fillStyle = 'hsl(280, 100%, 50%)';
+      }
+      ctx.beginPath();
+      ctx.arc(
+        boost.position.x * CELL_SIZE + CELL_SIZE / 2,
+        boost.position.y * CELL_SIZE + CELL_SIZE / 2,
+        CELL_SIZE / 3,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    });
+
+    // Draw penalties
+    state.penalties.forEach(penalty => {
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = 'hsl(0, 100%, 50%)';
+      ctx.fillStyle = 'hsl(0, 100%, 50%)';
+      ctx.fillRect(
+        penalty.position.x * CELL_SIZE + 3,
+        penalty.position.y * CELL_SIZE + 3,
+        CELL_SIZE - 6,
+        CELL_SIZE - 6
+      );
+    });
 
     // Draw snake with gradient
     ctx.shadowBlur = 10;
@@ -126,6 +161,9 @@ export const SnakeGame = ({ mode, onScoreChange, onGameOver }: SnakeGameProps) =
       return;
     }
 
+    const hasSpeedBoost = gameState.activeBoosts.some(b => b.type === 'speed');
+    const gameSpeed = hasSpeedBoost ? BASE_GAME_SPEED * SPEED_BOOST_MULTIPLIER : BASE_GAME_SPEED;
+
     gameLoopRef.current = setInterval(() => {
       setGameState(prevState => {
         const newState = updateGameState(prevState, nextDirection);
@@ -140,14 +178,14 @@ export const SnakeGame = ({ mode, onScoreChange, onGameOver }: SnakeGameProps) =
         
         return newState;
       });
-    }, GAME_SPEED);
+    }, gameSpeed);
 
     return () => {
       if (gameLoopRef.current) {
         clearInterval(gameLoopRef.current);
       }
     };
-  }, [isPaused, gameState.gameOver, nextDirection, onScoreChange, onGameOver]);
+  }, [isPaused, gameState.gameOver, gameState.activeBoosts, nextDirection, onScoreChange, onGameOver]);
 
   useEffect(() => {
     drawGame(gameState);
@@ -172,13 +210,25 @@ export const SnakeGame = ({ mode, onScoreChange, onGameOver }: SnakeGameProps) =
   return (
     <Card className="p-6 bg-card border-primary/20">
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="border-primary/30 text-primary font-bold text-lg px-4 py-1">
             Score: {gameState.score}
           </Badge>
           <Badge variant="outline" className="border-secondary/30 text-secondary">
             {mode === 'walls' ? '🧱 Walls' : '🌀 Pass-through'}
           </Badge>
+          {gameState.activeBoosts.map((boost, index) => (
+            <Badge 
+              key={`${boost.type}-${index}`}
+              variant="outline" 
+              className={boost.type === 'speed' 
+                ? 'border-yellow-500/50 text-yellow-400 animate-pulse' 
+                : 'border-purple-500/50 text-purple-400 animate-pulse'}
+            >
+              {boost.type === 'speed' ? <Zap className="w-3 h-3 mr-1" /> : <TrendingUp className="w-3 h-3 mr-1" />}
+              {boost.type === 'speed' ? 'x2 Speed' : 'x2 Points'}
+            </Badge>
+          ))}
         </div>
         
         <div className="flex gap-2">
@@ -236,8 +286,24 @@ export const SnakeGame = ({ mode, onScoreChange, onGameOver }: SnakeGameProps) =
         )}
       </div>
 
-      <div className="mt-4 text-sm text-muted-foreground text-center">
-        Use Arrow Keys or WASD to move • SPACE to pause
+      <div className="mt-4 space-y-2">
+        <div className="text-sm text-muted-foreground text-center">
+          Use Arrow Keys or WASD to move • SPACE to pause
+        </div>
+        <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-yellow-400 shadow-lg shadow-yellow-400/50" />
+            <span>x2 Speed</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-purple-400 shadow-lg shadow-purple-400/50" />
+            <span>x2 Points</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 bg-red-500 shadow-lg shadow-red-500/50" />
+            <span>-20 Points</span>
+          </div>
+        </div>
       </div>
     </Card>
   );
